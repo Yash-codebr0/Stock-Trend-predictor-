@@ -1,5 +1,8 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -12,89 +15,100 @@ warnings.filterwarnings("ignore")
 
 
 # =========================================================
-# FastAPI App
+# FASTAPI
 # =========================================================
 
 app = FastAPI(
     title="AI Stock Predictor API",
-    description="Machine Learning based stock trend prediction API",
+    description="Machine Learning based stock trend prediction",
     version="1.0.0"
 )
 
+# Static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# =========================================================
-# Request Models
-# =========================================================
-
-class StockRequest(BaseModel):
-    ticker: str
-
-
-class MultiStockRequest(BaseModel):
-    tickers: list[str]
+# HTML templates
+templates = Jinja2Templates(directory="templates")
 
 
 # =========================================================
-# Data Fetch
+# HOME PAGE
+# =========================================================
+
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request
+        }
+    )
+
+
+# =========================================================
+# DATA FETCH
 # =========================================================
 
 def get_data(ticker: str):
 
-    try:
-        df = yf.download(
-            ticker,
-            period="1y",
-            auto_adjust=True,
-            progress=False
-        )
+    df = yf.download(
+        ticker,
+        period="1y",
+        auto_adjust=True,
+        progress=False
+    )
 
-        if df.empty:
-            return None
-
-        # Handle MultiIndex columns from yfinance
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-
-        df.dropna(inplace=True)
-
-        return df
-
-    except Exception:
+    if df is None or df.empty:
         return None
+
+    # Handle yfinance MultiIndex columns
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    df.dropna(inplace=True)
+
+    return df
 
 
 # =========================================================
-# Feature Engineering
+# FEATURE ENGINEERING
 # =========================================================
 
 def add_features(df):
 
     df = df.copy()
 
-    # Returns
     df["Return"] = df["Close"].pct_change()
 
-    # Moving averages
     df["MA5"] = df["Close"].rolling(5).mean()
+
     df["MA10"] = df["Close"].rolling(10).mean()
 
-    # Volatility
-    df["Volatility"] = df["Return"].rolling(5).std()
+    df["Volatility"] = (
+        df["Return"]
+        .rolling(5)
+        .std()
+    )
 
     # RSI
     delta = df["Close"].diff()
 
     gain = delta.clip(lower=0)
+
     loss = -delta.clip(upper=0)
 
     avg_gain = gain.rolling(14).mean()
+
     avg_loss = loss.rolling(14).mean()
 
     rs = avg_gain / avg_loss
 
-    df["RSI"] = 100 - (100 / (1 + rs))
+    df["RSI"] = 100 - (
+        100 / (1 + rs)
+    )
 
-    # Target
+    # Tomorrow's movement
     df["Target"] = np.where(
         df["Close"].shift(-1) > df["Close"],
         1,
@@ -107,7 +121,7 @@ def add_features(df):
 
 
 # =========================================================
-# ML Model
+# MODEL
 # =========================================================
 
 def train_and_predict(df):
@@ -125,22 +139,24 @@ def train_and_predict(df):
     ]
 
     X = df[features]
+
     y = df["Target"]
 
-    # Remove final target if necessary
+    # Last row is prediction point
     X_train = X.iloc[:-1]
+
     y_train = y.iloc[:-1]
 
-    X_predict = X.iloc[[-1]]
+    X_current = X.iloc[-1:]
 
     # Scaling
     scaler = StandardScaler()
 
     X_train_scaled = scaler.fit_transform(X_train)
 
-    X_predict_scaled = scaler.transform(X_predict)
+    X_current_scaled = scaler.transform(X_current)
 
-    # Model
+    # Logistic Regression
     model = LogisticRegression(
         max_iter=1000
     )
@@ -152,143 +168,170 @@ def train_and_predict(df):
 
     # Prediction
     prediction = model.predict(
-        X_predict_scaled
+        X_current_scaled
     )[0]
 
     probabilities = model.predict_proba(
-        X_predict_scaled
+        X_current_scaled
     )[0]
 
-    probability = probabilities[prediction]
+    confidence = probabilities[prediction]
 
-    return int(prediction), float(probability)
+    return int(prediction), float(confidence)
 
 
 # =========================================================
-# Single Stock Prediction
+# SINGLE STOCK
 # =========================================================
 
-@app.get("/")
-def home():
+def analyze_stock(ticker):
 
-    return {
-        "message": "AI Stock Predictor API",
-        "status": "running"
-    }
+    ticker = ticker.strip().upper()
 
-
-@app.get("/health")
-def health():
-
-    return {
-        "status": "healthy"
-    }
-
-
-@app.post("/predict")
-def predict_stock(request: StockRequest):
-
-    ticker = request.ticker.upper().strip()
-
-    # Fetch data
     df = get_data(ticker)
 
     if df is None or df.empty:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No data found for {ticker}"
+        raise ValueError(
+            f"No data found for {ticker}"
         )
 
-    # Features
     df = add_features(df)
 
     if len(df) < 50:
-        raise HTTPException(
-            status_code=400,
-            detail="Not enough historical data"
+        raise ValueError(
+            f"Not enough data for {ticker}"
         )
+
+    prediction, confidence = train_and_predict(df)
+
+    if prediction == 1:
+        trend = "UP"
+        signal = "BUY"
+    else:
+        trend = "DOWN"
+        signal = "SELL"
+
+    # Recent prices for chart
+    chart_data = []
+
+    for date, row in df.tail(90).iterrows():
+
+        chart_data.append({
+            "date": date.strftime("%Y-%m-%d"),
+            "price": round(float(row["Close"]), 2)
+        })
+
+    latest = df.iloc[-1]
+
+    return {
+        "ticker": ticker,
+        "prediction": trend,
+        "signal": signal,
+        "confidence": round(confidence * 100, 2),
+        "current_price": round(
+            float(latest["Close"]), 2
+        ),
+        "rsi": round(
+            float(latest["RSI"]), 2
+        ),
+        "ma5": round(
+            float(latest["MA5"]), 2
+        ),
+        "ma10": round(
+            float(latest["MA10"]), 2
+        ),
+        "volatility": round(
+            float(latest["Volatility"] * 100), 2
+        ),
+        "chart": chart_data
+    }
+
+
+# =========================================================
+# PREDICTION API
+# =========================================================
+
+@app.get("/predict")
+async def predict(ticker: str):
 
     try:
 
-        prediction, probability = train_and_predict(df)
-
-        trend = "UP" if prediction == 1 else "DOWN"
+        result = analyze_stock(ticker)
 
         return {
-            "ticker": ticker,
-            "prediction": trend,
-            "confidence": round(probability * 100, 2)
+            "success": True,
+            "data": result
         }
 
     except Exception as e:
 
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 
 # =========================================================
-# Multi Stock Prediction
+# MULTI STOCK API
 # =========================================================
 
-@app.post("/predict/multiple")
-def predict_multiple(request: MultiStockRequest):
+@app.get("/predict-multiple")
+async def predict_multiple(tickers: str):
 
-    results = []
-
-    # Remove duplicates
-    tickers = list(
+    ticker_list = list(
         set(
-            ticker.upper().strip()
-            for ticker in request.tickers
+            ticker.strip().upper()
+            for ticker in tickers.split(",")
+            if ticker.strip()
         )
     )
 
-    for ticker in tickers:
+    results = []
+
+    for ticker in ticker_list:
 
         try:
 
-            df = get_data(ticker)
-
-            if df is None or df.empty:
-                continue
-
-            df = add_features(df)
-
-            if len(df) < 50:
-                continue
-
-            prediction, probability = train_and_predict(df)
+            result = analyze_stock(ticker)
 
             results.append({
-                "ticker": ticker,
-                "prediction": (
-                    "UP"
-                    if prediction == 1
-                    else "DOWN"
-                ),
-                "confidence": round(
-                    probability * 100,
-                    2
-                )
+                "ticker": result["ticker"],
+                "prediction": result["prediction"],
+                "signal": result["signal"],
+                "confidence": result["confidence"],
+                "current_price": result["current_price"]
             })
 
         except Exception as e:
 
-            print(
-                f"Skipping {ticker}: {e}"
-            )
+            results.append({
+                "ticker": ticker,
+                "prediction": "ERROR",
+                "signal": "N/A",
+                "confidence": 0,
+                "current_price": 0,
+                "error": str(e)
+            })
 
-            continue
-
-    # Sort by confidence
     results.sort(
         key=lambda x: x["confidence"],
         reverse=True
     )
 
     return {
-        "count": len(results),
-        "results": results
+        "success": True,
+        "data": results
+    }
+
+
+# =========================================================
+# HEALTH CHECK
+# =========================================================
+
+@app.get("/health")
+async def health():
+
+    return {
+        "status": "healthy",
+        "service": "AI Stock Predictor"
     }
