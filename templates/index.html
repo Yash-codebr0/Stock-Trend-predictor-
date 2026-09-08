@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>AI Stock Predictor</title>
+
+    <link
+        rel="stylesheet"
+        href="/static/style.css"
+    >
+
+</head>
+
+
+<body>
+
+<div class="container">
+
+    <!-- HEADER -->
+
+    <header>
+
+        <div>
+
+            <h1>🚀 AI Stock Predictor</h1>
+
+            <p>
+                Machine Learning powered market analysis
+            </p>
+
+        </div>
+
+        <div class="status">
+
+            <span class="status-dot"></span>
+
+            API Online
+
+        </div>
+
+    </header>
+
+
+    <!-- SEARCH -->
+
+    <section class="search-card">
+
+        <h2>Analyze Stock</h2>
+
+        <div class="search-box">
+
+            <input
+                id="tickerInput"
+                type="text"
+                placeholder="Enter ticker e.g. AAPL"
+                value="AAPL"
+            >
+
+            <button
+                onclick="predictStock()"
+            >
+                PREDICT
+            </button>
+
+        </div>
+
+        <p class="hint">
+            You can analyze multiple stocks:
+            AAPL, NVDA, TSLA
+        </p>
+
+    </section>
+
+
+    <!-- LOADING -->
+
+    <div
+        id="loading"
+        class="loading hidden"
+    >
+
+        <div class="spinner"></div>
+
+        <p>
+            Analyzing market data...
+        </p>
+
+    </div>
+
+
+    <!-- ERROR -->
+
+    <div
+        id="error"
+        class="error hidden"
+    ></div>
+
+
+    <!-- DASHBOARD -->
+
+    <main
+        id="dashboard"
+        class="hidden"
+    >
+
+        <!-- MAIN RESULT -->
+
+        <section class="result-grid">
+
+
+            <!-- PREDICTION -->
+
+            <div class="card prediction-card">
+
+                <p class="label">
+                    PREDICTION
+                </p>
+
+                <h2 id="prediction">
+                    --
+                </h2>
+
+                <div
+                    id="signal"
+                    class="signal"
+                >
+                    --
+                </div>
+
+            </div>
+
+
+            <!-- CONFIDENCE -->
+
+            <div class="card confidence-card">
+
+                <p class="label">
+                    CONFIDENCE
+                </p>
+
+                <div class="confidence">
+
+                    <div
+                        class="confidence-circle"
+                        id="confidenceCircle"
+                    >
+
+                        <span id="confidence">
+                            0%
+                        </span>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- PRICE -->
+
+            <div class="card">
+
+                <p class="label">
+                    CURRENT PRICE
+                </p>
+
+                <h2 id="price">
+                    --
+                </h2>
+
+            </div>
+
+
+            <!-- RSI -->
+
+            <div class="card">
+
+                <p class="label">
+                    RSI
+                </p>
+
+                <h2 id="rsi">
+                    --
+                </h2>
+
+            </div>
+
+
+        </section>
+
+
+        <!-- INDICATORS -->
+
+        <section class="card indicators">
+
+            <h2>
+                Technical Indicators
+            </h2>
+
+            <div class="indicator-grid">
+
+                <div>
+
+                    <span>
+                        MA5
+                    </span>
+
+                    <strong id="ma5">
+                        --
+                    </strong>
+
+                </div>
+
+                <div>
+
+                    <span>
+                        MA10
+                    </span>
+
+                    <strong id="ma10">
+                        --
+                    </strong>
+
+                </div>
+
+                <div>
+
+                    <span>
+                        Volatility
+                    </span>
+
+                    <strong id="volatility">
+                        --
+                    </strong>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- CHART -->
+
+        <section class="card chart-card">
+
+            <h2>
+                📈 Price History
+            </h2>
+
+            <div class="chart-wrapper">
+
+                <canvas
+                    id="priceChart"
+                ></canvas>
+
+            </div>
+
+        </section>
+
+
+        <!-- MULTI STOCK -->
+
+        <section
+            id="multiStockSection"
+            class="card hidden"
+        >
+
+            <h2>
+                📊 Stock Comparison
+            </h2>
+
+            <div class="table-wrapper">
+
+                <table>
+
+                    <thead>
+
+                    <tr>
+
+                        <th>
+                            Ticker
+                        </th>
+
+                        <th>
+                            Prediction
+                        </th>
+
+                        <th>
+                            Signal
+                        </th>
+
+                        <th>
+                            Confidence
+                        </th>
+
+                        <th>
+                            Price
+                        </th>
+
+                    </tr>
+
+                    </thead>
+
+                    <tbody
+                        id="stockTable"
+                    >
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </section>
+
+    </main>
+
+</div>
+
+
+<!-- Chart.js -->
+
+<script
+    src="https://cdn.jsdelivr.net/npm/chart.js"
+></script>
+
+
+<script
+    src="/static/script.js"
+></script>
+
+</body>
+
+</html>
